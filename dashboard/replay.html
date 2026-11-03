@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gravitational Voronoi</title>
+<style>
+  :root {
+    --bg: #11131a; --panel: #1a1d27; --line: #2c3040; --ink: #e8eaf2; --dim: #9aa0b5;
+    --gold: #ffcf5c; --bad: #ff8a8a; --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: .3px; }
+  header .meta { color: var(--dim); font-size: 13px; }
+  .wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; padding: 18px 20px; }
+  @media (max-width: 960px) { .wrap { grid-template-columns: 1fr; } }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+  .card h2 {
+    margin: 0; padding: 11px 14px; font-size: 12px; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line);
+  }
+
+  /* The scoreboard: one row per seat, so it works for two players and for a melee. */
+  .players { padding: 6px 0; }
+  .pl { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; gap: 4px 12px;
+        align-items: center; padding: 7px 14px; }
+  .pl .dot { width: 13px; height: 13px; border-radius: 50%; }
+  .pl .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl .sub { grid-column: 2 / 5; color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums;
+             margin-top: -4px; }
+  .pl .pts { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  .pl .pct { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 48px;
+             text-align: right; }
+  .pl.turn { background: #232838; }
+  .pl.turn .nm::after { content: "  · to play"; color: var(--gold); font-weight: 600; font-size: 12px; }
+  .pl.lead .pts { color: var(--gold); }
+  .pl .low { color: var(--gold); }
+  .pl .bad { color: var(--bad); }
+  .thinking { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .banner { display: none; margin: 0 14px 12px; padding: 10px 14px; border-radius: 10px;
+            border: 1px solid var(--line); background: #20242f; font-size: 14px; }
+  .banner.show { display: block; }
+  .banner b { color: var(--gold); }
+  .banner .sub { color: var(--dim); font-size: 12.5px; margin-top: 3px; }
+  .banner.skip { border-color: var(--bad); background: #2b1d22; }
+  .banner.skip b { color: var(--bad); }
+
+  /* The board. Sized by the window's height so it never pushes the controls off screen. */
+  .boardwrap { padding: 8px 14px 6px; position: relative; }
+  canvas.board { display: block; margin: 0 auto; border-radius: 6px; border: 1px solid var(--line);
+                 width: min(100%, calc(100vh - 330px)); min-width: 280px; aspect-ratio: 1; image-rendering: auto; }
+  .hover { text-align: center; color: var(--dim); font-size: 12px; min-height: 18px;
+           font-variant-numeric: tabular-nums; }
+
+  .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+              padding: 11px 14px; border-top: 1px solid var(--line); }
+  button {
+    background: #262a38; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 12px; font: inherit; cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #30354a; }
+  button:disabled { opacity: .4; cursor: default; }
+  input[type=range] { flex: 1; min-width: 110px; accent-color: var(--gold); }
+  .step { color: var(--dim); font-variant-numeric: tabular-nums; min-width: 92px; }
+  label.small { color: var(--dim); font-size: 12px; display: flex; align-items: center; gap: 5px; }
+
+  .moves { max-height: 340px; overflow: auto; }
+  .mv { display: grid; grid-template-columns: 34px 12px 1fr; gap: 8px; align-items: baseline;
+        padding: 4px 14px; font-size: 13px; cursor: pointer; }
+  .mv:hover { background: #22263a; }
+  .mv.here { background: #2a2f44; }
+  .mv .no { color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .mv .sw { width: 9px; height: 9px; border-radius: 50%; }
+  .mv.bad .what { color: var(--bad); }
+  .mv.gone .what { color: var(--dim); font-style: italic; }
+  .games { display: flex; gap: 8px; padding: 10px 14px 0; flex-wrap: wrap; }
+  .games button.on { border-color: var(--gold); color: var(--gold); }
+  .note { color: var(--dim); font-size: 12px; padding: 4px 14px; }
+  .note.skip { color: var(--bad); }
+  .note.forfeit { color: var(--gold); }
+  .final { padding: 12px 14px; font-size: 14px; border-top: 1px solid var(--line); }
+  .final:empty { display: none; }
+  .legend { color: var(--dim); font-size: 12px; padding: 10px 14px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gravitational Voronoi</h1>
+  <span class="meta" id="meta"></span>
+  <span class="meta" id="status"></span>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="card">
+      <div class="games" id="games"></div>
+      <div class="banner" id="banner"></div>
+      <div class="boardwrap">
+        <canvas class="board" id="board" width="1000" height="1000"></canvas>
+        <div class="hover" id="hover"></div>
+      </div>
+      <div class="controls" id="controls">
+        <button id="first">⏮</button><button id="prev">◀</button>
+        <button id="play">▶ Play</button>
+        <button id="next">▶</button><button id="last">⏭</button>
+        <span class="step" id="step"></span>
+        <input type="range" id="scrub" min="0" max="0" value="0">
+      </div>
+      <div class="controls">
+        <label class="small"><input type="checkbox" id="rings"> show the no-go zone around each stone</label>
+      </div>
+      <div class="legend">Each point belongs to the colour with the greatest pull, Σ weight / distance².
+        Stones are the dark dots (bigger means heavier); grey points are ties and belong to nobody.</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Players</h2>
+      <div class="players" id="players"></div>
+      <div class="final" id="final"></div>
+    </div>
+    <div class="card" style="margin-top:14px" id="movescard">
+      <h2>Turns</h2>
+      <div class="moves" id="moves"></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2>Referee notes (skips &amp; forfeits)</h2>
+      <div id="notes"><div class="note">None.</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// The replay data is pasted in when a replay file is written. When it is null the page is
+// being served live by the dashboard and polls /state instead.
+const DATA = /* REPLAY_DATA */ null;
+
+const $ = id => document.getElementById(id);
+const TIE_TOLERANCE = 1e-9;                       // the same rule the referee uses
+
+// Per seat: the territory colour (light) and the stone colour (dark), as the spec asks.
+const PALETTE = {
+  red:    {land: [244, 160, 160], stone: [150, 20, 28],  ui: '#ff6b6b'},
+  blue:   {land: [158, 186, 245], stone: [22, 52, 150],  ui: '#5b8dff'},
+  green:  {land: [160, 222, 170], stone: [20, 110, 45],  ui: '#3ccf7a'},
+  orange: {land: [250, 200, 140], stone: [170, 85, 0],   ui: '#ffa040'},
+  purple: {land: [205, 175, 240], stone: [90, 35, 150],  ui: '#b07bff'},
+  teal:   {land: [150, 220, 215], stone: [0, 100, 95],   ui: '#2fc4b8'},
+  yellow: {land: [245, 232, 140], stone: [140, 115, 0],  ui: '#f2d43d'},
+  pink:   {land: [245, 175, 215], stone: [160, 30, 105], ui: '#ff7fc4'},
+  brown:  {land: [215, 190, 160], stone: [100, 60, 25],  ui: '#c49a6c'},
+  gray:   {land: [200, 200, 205], stone: [60, 60, 70],   ui: '#a0a4b0'},
+};
+const TIE = [228, 228, 232];
+const COLORS = Object.keys(PALETTE);
+
+let state = null;      // the match
+let gameIx = 0;        // which game is shown
+let step = 0;          // how many turns of that game are shown
+let timer = null;
+let live = !DATA;
+let lastKey = '';      // what the board was last drawn from, to skip needless redraws
+let owner = null;      // owner of every point of the board as drawn (for the hover readout)
+let drawnStones = [];
+
+const esc = t => { const d = document.createElement('div'); d.textContent = t ?? ''; return d.innerHTML; };
+const fmt = n => (n ?? 0).toLocaleString('en-US');
+const colorOf = seat => (state && state.colors ? state.colors[seat] : COLORS[seat]) || COLORS[seat % COLORS.length];
+
+// ---------------------------------------------------------------- territory
+
+/** Who owns every point: owner[y * grid + x] = seat + 1, or 0 for a tie. Same rule as the referee. */
+function territory(grid, stones, k) {
+  const n = grid * grid;
+  const pull = [];
+  for (let p = 0; p < k; p++) pull.push(new Float64Array(n));
+  const dx2 = new Float64Array(grid);
+  for (const [p, sx, sy, w] of stones) {
+    const pp = pull[p];
+    for (let x = 0; x < grid; x++) dx2[x] = (x - sx) * (x - sx);
+    for (let y = 0; y < grid; y++) {
+      const dy2 = (y - sy) * (y - sy), base = y * grid;
+      for (let x = 0; x < grid; x++) {
+        const d = dy2 + dx2[x];
+        if (d) pp[base + x] += w / d;
+      }
+    }
+  }
+  const own = new Uint8Array(n);
+  if (!stones.length) return own;
+  const hi = 1 + TIE_TOLERANCE;
+  for (let i = 0; i < n; i++) {
+    let best = -1, who = 0;
+    for (let p = 0; p < k; p++) {
+      const v = pull[p][i];
+      if (v > best * hi) { best = v; who = p + 1; }
+      else if (v * hi >= best) { if (v > best) best = v; who = 0; }
+    }
+    own[i] = who;
+  }
+  for (const [p, sx, sy] of stones) own[sy * grid + sx] = p + 1;
+  return own;
+}
+
+/** Draw the board: the territory in light colours, then the stones, darker, on top. */
+function drawBoard(grid, stones, k, minDist, avgWeight, lastStone) {
+  const key = JSON.stringify([grid, stones, $('rings').checked, lastStone]);
+  if (key === lastKey) return;
+  lastKey = key;
+  const cv = $('board');
+  if (cv.width !== grid) { cv.width = grid; cv.height = grid; }
+  const ctx = cv.getContext('2d');
+  owner = territory(grid, stones, k);
+  drawnStones = stones;
+  const img = ctx.createImageData(grid, grid);
+  const lands = [TIE].concat([...Array(k).keys()].map(p => PALETTE[colorOf(p)].land));
+  for (let i = 0, j = 0; i < owner.length; i++, j += 4) {
+    const c = lands[owner[i]];
+    img.data[j] = c[0]; img.data[j + 1] = c[1]; img.data[j + 2] = c[2]; img.data[j + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const s = grid / 1000;                          // drawing sizes are for a 1000-point board
+  if ($('rings').checked) {
+    ctx.lineWidth = 1.5 * s;
+    for (const [p, x, y] of stones) {
+      ctx.beginPath(); ctx.arc(x + .5, y + .5, minDist, 0, 2 * Math.PI);
+      ctx.strokeStyle = `rgba(${PALETTE[colorOf(p)].stone.join(',')}, .55)`;
+      ctx.setLineDash([6 * s, 5 * s]); ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+  for (const [p, x, y, w] of stones) {
+    const r = Math.min(26, 5 + 9 * Math.sqrt(w / Math.max(1, avgWeight))) * s;
+    ctx.beginPath(); ctx.arc(x + .5, y + .5, r, 0, 2 * Math.PI);
+    ctx.fillStyle = `rgb(${PALETTE[colorOf(p)].stone.join(',')})`;
+    ctx.fill();
+    ctx.lineWidth = 2.5 * s; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.stroke();
+  }
+  if (lastStone) {
+    const [, x, y] = lastStone;
+    ctx.beginPath(); ctx.arc(x + .5, y + .5, 34 * s, 0, 2 * Math.PI);
+    ctx.lineWidth = 3 * s; ctx.strokeStyle = 'rgba(20,20,30,.85)'; ctx.stroke();
+  }
+}
+
+$('board').addEventListener('mousemove', e => {
+  if (!owner) return;
+  const cv = $('board'), r = cv.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / r.width * cv.width);
+  const y = Math.floor((e.clientY - r.top) / r.height * cv.height);
+  if (x < 0 || y < 0 || x >= cv.width || y >= cv.height) return;
+  const o = owner[y * cv.width + x];
+  const near = drawnStones.find(([, sx, sy]) => (sx - x) ** 2 + (sy - y) ** 2 < 400);
+  $('hover').textContent = `(${x}, ${y}) · ${o ? colorOf(o - 1) : 'tie, nobody'}` +
+    (near ? ` · stone of ${colorOf(near[0])}, weight ${near[3]}` : '');
+});
+$('board').addEventListener('mouseleave', () => { $('hover').textContent = ''; });
+$('rings').onchange = () => { lastKey = ''; live ? null : render(); };
+
+// ------------------------------------------------------------- the panels
+
+/** The scoreboard. rows: [{seat, name, score, sub, turn, thinking}] */
+function drawPlayers(grid, rows) {
+  const total = grid * grid;
+  const best = Math.max(...rows.map(r => r.score));
+  $('players').innerHTML = rows.map(r => {
+    const c = colorOf(r.seat);
+    return `<div class="pl ${r.turn ? 'turn' : ''} ${r.score === best && best > 0 ? 'lead' : ''}">
+      <span class="dot" style="background:${PALETTE[c].ui}"></span>
+      <span class="nm" title="${esc(r.name)}">${esc(r.name)}</span>
+      <span class="pct">${(100 * r.score / total).toFixed(1)}%</span>
+      <span class="pts">${fmt(r.score)}</span>
+      <span class="sub">${c} · seat ${r.seat + 1} · ${r.sub}</span>
+    </div>`;
+  }).join('');
+}
+
+function subLine(seat, clock, weightLeft, skipped, error, thinking) {
+  const parts = [];
+  if (clock !== undefined && clock !== null)
+    parts.push(`<span class="${clock < 15 ? 'low' : ''} ${thinking ? 'thinking' : ''}">${clock.toFixed(1)}s left</span>`);
+  if (weightLeft !== undefined) parts.push(`weight left ${weightLeft}`);
+  if (skipped) parts.push(`<span class="bad">${skipped} skipped</span>`);
+  if (error) parts.push(`<span class="bad">forfeit: ${esc(error)}</span>`);
+  return parts.join(' · ');
+}
+
+function drawNotes(notes) {
+  const box = $('notes');
+  box.innerHTML = '';
+  if (!notes || !notes.length) { box.innerHTML = '<div class="note">None.</div>'; return; }
+  notes.slice(-40).forEach(t => {
+    const d = document.createElement('div');
+    d.className = 'note' + (t.startsWith('SKIPPED') ? ' skip' : t.startsWith('FORFEIT') ? ' forfeit' : '');
+    d.textContent = t;
+    box.appendChild(d);
+  });
+}
+
+function describe(m) {
+  if (m.stone) return `(${m.stone.x}, ${m.stone.y}) weight ${m.stone.weight}`;
+  if (m.refused) return `SKIPPED: ${m.refused}`;
+  if (m.forfeit) return `no move (forfeited: ${m.forfeit})`;
+  return 'no move';
+}
+
+// ---------------------------------------------------------------- replay
+
+function rebuild(game, upto) {
+  const moves = game.moves || [];
+  const stones = [];
+  for (let i = 0; i < Math.min(upto, moves.length); i++) {
+    const s = moves[i].stone;
+    if (s) stones.push([s.player, s.x, s.y, s.weight]);
+  }
+  return stones;
+}
+
+function render() {
+  if (!state) return;
+  const games = state.games || [];
+  const game = games[gameIx];
+  const P = state.params || {};
+  const k = state.players || (state.names || []).length;
+  $('meta').textContent = `${P.stones} stones and ${P.weight} weight each · ${k} players · ` +
+                          `${state.time_budget}s per bot per game`;
+  $('status').textContent = state.status || '';
+
+  const tabs = $('games');
+  if (tabs.childElementCount !== games.length) {
+    tabs.innerHTML = '';
+    games.forEach((gs, i) => {
+      const b = document.createElement('button');
+      b.textContent = `Game ${gs.game}` + (gs.seats ? ` · ${gs.seats[0]} first` : '');
+      b.onclick = () => { gameIx = i; step = (games[i].moves || []).length; stopPlay(); render(); };
+      tabs.appendChild(b);
+    });
+  }
+  [...tabs.children].forEach((b, i) => b.classList.toggle('on', i === gameIx));
+  if (!game) return;
+
+  const moves = game.moves || [];
+  step = Math.max(0, Math.min(step, moves.length));
+  const at = moves[step - 1];
+  const stones = rebuild(game, step);
+  const grid = (state.grid || 1000), minDist = state.min_dist || 66;
+  drawBoard(grid, stones, k, minDist, P.weight / Math.max(1, P.stones),
+            at && at.stone ? [at.stone.player, at.stone.x, at.stone.y] : null);
+
+  const next = moves[step];        // whose turn is shown as "to play"
+  const skippedSoFar = new Array(k).fill(0);
+  moves.slice(0, step).forEach(m => { if (m.refused) skippedSoFar[m.player]++; });
+  drawPlayers(grid, (game.seats || []).map((name, seat) => ({
+    seat, name,
+    score: at ? at.scores[seat] : 0,
+    turn: step < moves.length && next && next.player === seat,
+    sub: subLine(seat, at ? at.clocks[seat] : state.time_budget,
+                 at ? at.weight_left[seat] : P.weight, skippedSoFar[seat],
+                 step >= moves.length && game.errors ? game.errors[seat] : null, false),
+  })));
+
+  const banner = $('banner');
+  if (at && at.refused) {
+    banner.className = 'banner show skip';
+    banner.innerHTML = `<b>${esc(game.seats[at.player])} (${colorOf(at.player)}): turn skipped</b>` +
+      `<div class="sub">Sent ${esc(JSON.stringify(at.sent))}: ${esc(at.refused)}. No stone was placed.</div>`;
+  } else if (step >= moves.length && game.status === 'finished') {
+    const sc = game.scores || [];
+    const best = Math.max(...sc), winners = (game.seats || []).filter((_, i) => sc[i] === best);
+    banner.className = 'banner show';
+    banner.innerHTML = winners.length === 1
+      ? `<b>${esc(winners[0])} takes game ${game.game}</b> with ${fmt(best)} points (${(100 * best / grid / grid).toFixed(1)}% of the board).`
+      : `<b>Game ${game.game} is a tie</b> between ${winners.map(esc).join(' and ')}.`;
+    const errs = (game.errors || []).map((e, i) => e ? `${game.seats[i]}: ${e}` : null).filter(Boolean);
+    if (errs.length) banner.innerHTML += `<div class="sub">Forfeit: ${esc(errs.join('; '))}</div>`;
+  } else {
+    banner.className = 'banner';
+  }
+
+  $('scrub').max = moves.length;
+  $('scrub').value = step;
+  $('step').textContent = `turn ${step} / ${moves.length}`;
+  drawMoves(game, moves);
+  drawNotes(game.notes);
+  drawFinal();
+}
+
+function drawMoves(game, moves) {
+  const box = $('moves');
+  box.innerHTML = '';
+  moves.forEach((m, i) => {
+    const row = document.createElement('div');
+    row.className = 'mv' + (i === step - 1 ? ' here' : '') + (m.refused ? ' bad' : '') +
+                    (!m.stone && !m.refused ? ' gone' : '');
+    row.innerHTML = `<span class="no">${i + 1}</span>` +
+      `<span class="sw" style="background:${PALETTE[colorOf(m.player)].ui}"></span>` +
+      `<span class="what"></span>`;
+    row.querySelector('.what').textContent = describe(m);
+    row.title = game.seats ? game.seats[m.player] : '';
+    row.onclick = () => { step = i + 1; stopPlay(); render(); };
+    box.appendChild(row);
+  });
+  const here = box.querySelector('.here');
+  if (here) here.scrollIntoView({block: 'nearest'});
+}
+
+function drawFinal() {
+  const s = state.summary;
+  if (!s) { $('final').innerHTML = ''; return; }
+  const names = Object.keys(s.totals || {}).sort((a, b) => s.totals[b] - s.totals[a]);
+  $('final').innerHTML = `<div style="color:var(--dim);font-size:12px">Totals over all ${(s.games || []).length} games</div>` +
+    names.map(n => `<div>${n === s.winner ? '<b style="color:var(--gold)">' : ''}${esc(n)}: ${fmt(s.totals[n])}` +
+                    `${n === s.winner ? ' · wins</b>' : ''}</div>`).join('') +
+    (s.winner ? '' : '<div><b>Tie.</b></div>');
+}
+
+function stopPlay() { if (timer) { clearInterval(timer); timer = null; $('play').textContent = '▶ Play'; } }
+$('play').onclick = () => {
+  if (timer) return stopPlay();
+  $('play').textContent = '⏸ Pause';
+  timer = setInterval(() => {
+    const moves = (state.games[gameIx].moves) || [];
+    if (step >= moves.length) return stopPlay();
+    step++; render();
+  }, 600);
+};
+$('first').onclick = () => { stopPlay(); step = 0; render(); };
+$('prev').onclick = () => { stopPlay(); step = Math.max(0, step - 1); render(); };
+$('next').onclick = () => { stopPlay(); step++; render(); };
+$('last').onclick = () => { stopPlay(); step = (state.games[gameIx].moves || []).length; render(); };
+$('scrub').oninput = e => { stopPlay(); step = +e.target.value; render(); };
+document.addEventListener('keydown', e => {
+  if (live) return;
+  if (e.key === 'ArrowLeft') $('prev').click();
+  if (e.key === 'ArrowRight') $('next').click();
+  if (e.key === ' ') { e.preventDefault(); $('play').click(); }
+});
+
+// ------------------------------------------------------------------ live
+
+function renderLive(s) {
+  $('status').textContent = s.status || '';
+  const n = s.now;
+  if (!n) return;
+  const P = s.params || {};
+  const k = (s.seats || []).length;
+  state = {colors: null};
+  $('meta').textContent = `${s.names.length} players · ${P.stones} stones and ${P.weight} weight each`;
+  $('games').innerHTML = '';
+  const last = n.stones[n.stones.length - 1];
+  drawBoard(n.grid, n.stones, k, n.min_dist, P.weight / Math.max(1, P.stones), last || null);
+  const cur = (s.games || [])[s.games.length - 1] || {};
+  drawPlayers(n.grid, (s.seats || []).map((name, seat) => ({
+    seat, name, score: n.scores[seat], turn: !n.done && n.turn === seat,
+    sub: subLine(seat, s.live_clocks ? s.live_clocks[seat] : null, n.weight_left[seat],
+                 n.skipped[seat], (cur.errors || [])[seat], s.thinking && s.thinking[seat]),
+  })));
+  // A skip is shown in the banner until the next stone lands.
+  const notes = n.notes || [];
+  const lastNote = notes[notes.length - 1] || '';
+  const banner = $('banner');
+  if (lastNote.startsWith('SKIPPED') || lastNote.startsWith('FORFEIT')) {
+    banner.className = 'banner show skip';
+    banner.innerHTML = `<b>${lastNote.startsWith('SKIPPED') ? 'Turn skipped' : 'Forfeit'}</b><div class="sub">${esc(lastNote)}</div>`;
+  } else { banner.className = 'banner'; }
+  drawNotes(notes);
+}
+
+if (DATA) {
+  state = DATA;
+  gameIx = 0;
+  step = ((state.games[0] || {}).moves || []).length;
+  render();
+} else {
+  $('controls').style.display = 'none';
+  $('movescard').style.display = 'none';
+  const poll = async () => {
+    try {
+      const r = await fetch('/state');
+      renderLive(await r.json());
+    } catch (e) { /* the server may be busy between matches */ }
+  };
+  $('rings').onchange = () => { lastKey = ''; poll(); };
+  poll();
+  setInterval(poll, 400);
+}
+</script>
+</body>
+</html>

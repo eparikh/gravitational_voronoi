@@ -1,0 +1,6 @@
+[
+  {"name": "Greedy (Python)", "cwd": "bots/samples/greedy-python", "command": ["{python}", "bot.py"]},
+  {"name": "Spread (Python)", "cwd": "bots/samples/spread-python", "command": ["{python}", "bot.py"]},
+  {"name": "Random (Python)", "cwd": "bots/samples/random-python", "command": ["{python}", "bot.py"]},
+  {"name": "Random (C++)", "cwd": "bots/samples/random-cpp", "command": ["./bot"], "build": ["{python}", "build.py"]}
+]

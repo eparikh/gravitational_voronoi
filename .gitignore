@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.DS_Store
+results/
+bots.local.json
+bots/*/
+!bots/samples/
+!bots/templates/
+bots/samples/*/bot
+bots/samples/*/bot.exe
+bots/templates/*/bot
+bots/templates/*/bot.exe

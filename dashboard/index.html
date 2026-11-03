@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gravitational Voronoi</title>
+<style>
+  :root {
+    --bg: #11131a; --panel: #1a1d27; --line: #2c3040; --ink: #e8eaf2; --dim: #9aa0b5;
+    --red: #ff6b6b; --blue: #5b8dff; --gold: #ffcf5c; --bad: #ff8a8a; --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    padding: 16px 22px; border-bottom: 1px solid var(--line); background: var(--panel);
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: .3px; }
+  header .sub { color: var(--dim); font-size: 13px; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 22px 60px; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+          margin-bottom: 18px; }
+  .card > h2 {
+    margin: 0; padding: 12px 16px; font-size: 12px; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--dim); border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card > h2 .n {
+    width: 20px; height: 20px; border-radius: 50%; background: #262a38; color: var(--ink);
+    display: grid; place-items: center; font-size: 11px; letter-spacing: 0;
+  }
+  .card .body { padding: 16px; }
+  .hint { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
+
+  button {
+    background: #262a38; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 13px; font: inherit; cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #30354a; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--gold); border-color: var(--gold); color: #1a1405; font-weight: 600; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--gold); }
+  button.danger { color: var(--bad); }
+  button.mini { padding: 3px 9px; font-size: 12px; }
+  .row { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  tr:last-child td { border-bottom: none; }
+
+  select, input[type=text], input[type=number] {
+    background: #14161f; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 9px; font: inherit;
+  }
+  input[type=number] { width: 84px; }
+  label.small { color: var(--dim); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+
+  .pairing { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+             padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .pairing:last-of-type { border-bottom: none; }
+  .pairing .mid { color: var(--dim); font-size: 12px; }
+  .pairing .seat { display: flex; align-items: center; gap: 4px; }
+  .pairing .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .pairing .grow { flex: 1; }
+  .kind { font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 99px;
+          padding: 1px 8px; }
+
+  .status { padding: 11px 16px; border-top: 1px solid var(--line); color: var(--dim); font-size: 13px; }
+  .status.run { color: var(--gold); }
+  .err { color: var(--bad); }
+  .win { color: var(--gold); font-weight: 600; }
+  a { color: var(--blue); }
+  iframe { width: 100%; height: 900px; border: 0; border-radius: 0 0 var(--radius) var(--radius);
+           display: block; background: var(--bg); }
+  .pill { font-size: 11px; color: var(--dim); border: 1px solid var(--line); border-radius: 99px;
+          padding: 1px 8px; white-space: nowrap; }
+  .pill.bad { color: var(--bad); border-color: var(--bad); }
+  .warn { color: var(--gold); font-size: 12px; }
+  .dim { color: var(--dim); }
+  .g { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .g .w { color: var(--gold); font-weight: 600; }
+  .sw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; }
+  code { color: #c9cfe6; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gravitational Voronoi</h1>
+  <span class="sub">architecture &amp; tournament referee · every bot runs on this machine</span>
+</header>
+
+<main>
+  <!-- 1. Bots -->
+  <div class="card">
+    <h2><span class="n">1</span> Bots</h2>
+    <div class="body">
+      <p class="hint">Read from <code>bots.json</code>, plus any folder dropped into <code>bots/</code>
+        that holds a <code>bot.py</code>, <code>bot.cpp</code> or <code>bot.jl</code>. To add a classmate's
+        bot, unzip their folder into <code>bots/</code> and press <b>Rescan</b>.</p>
+      <table id="bots"><tbody></tbody></table>
+      <div class="row" style="margin-top:12px">
+        <button id="rescan">Rescan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Parameters -->
+  <div class="card">
+    <h2><span class="n">2</span> Parameters</h2>
+    <div class="body">
+      <p class="hint">Each file holds the <b>stones</b> each player places and the <b>total weight</b>
+        each player may spread over them. The board is 1000 × 1000 and stones must be at least 66 apart.</p>
+      <table id="params"><tbody></tbody></table>
+      <div class="row" style="margin-top:12px">
+        <input type="text" id="pname" placeholder="file name" size="14">
+        <label class="small">stones <input type="number" id="ps" value="10" min="1"></label>
+        <label class="small">weight <input type="number" id="pw" value="100" min="1"></label>
+        <button id="addparam">Save file</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Matches -->
+  <div class="card">
+    <h2><span class="n">3</span> Matches</h2>
+    <div class="body">
+      <p class="hint">A match between two bots is two games with the same parameters: each bot moves
+        first once (<b style="color:var(--red)">red</b> moves first, <b style="color:var(--blue)">blue</b>
+        places the last stone). A bot's score is its territory over both games added together.
+        A <b>melee</b> is the same with more bots: one game per bot, the seats rotating so every bot
+        sits in every seat once. An illegal stone skips that turn and is logged.</p>
+      <div id="pairings"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="addpair">Add pairing</button>
+        <button id="everypair">Every pair</button>
+        <button id="melee">Melee of every bot</button>
+        <button id="clearpairs">Clear</button>
+        <span style="flex:1"></span>
+        <label class="small">seconds per bot per game
+          <input type="number" id="clock" value="120" min="1" max="3600"></label>
+        <label class="small">watching pace
+          <input type="number" id="pace" value="300" min="0" max="3000" step="50"> ms/move</label>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="primary" id="start">Start tournament</button>
+        <button id="stop" disabled>Stop</button>
+      </div>
+    </div>
+    <div class="status" id="status">Choose bots and matches, then start.</div>
+  </div>
+
+  <!-- Live -->
+  <div class="card" id="livecard" style="display:none">
+    <h2>Playing now</h2>
+    <iframe id="liveframe" src="/live"></iframe>
+  </div>
+
+  <!-- Results -->
+  <div class="card">
+    <h2>Results</h2>
+    <div class="body">
+      <table id="results"><tbody></tbody></table>
+      <div id="table" style="margin-top:18px"></div>
+      <div class="row" style="margin-top:14px">
+        <button class="danger" id="clearres">Clear results</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const UI = ['#ff6b6b', '#5b8dff', '#3ccf7a', '#ffa040', '#b07bff', '#2fc4b8', '#f2d43d', '#ff7fc4',
+            '#c49a6c', '#a0a4b0'];
+let setup = {bots: [], params: [], max_players: 10, colors: []};
+let pairs = [];
+
+const esc = t => { const d = document.createElement('div'); d.textContent = t ?? ''; return d.innerHTML; };
+const fmt = n => (n ?? 0).toLocaleString('en-US');
+
+async function get(url) { const r = await fetch(url); if (!r.ok) throw new Error((await r.json()).error); return r.json(); }
+async function post(url, body) {
+  const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify(body || {})});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'failed');
+  return j;
+}
+
+// ------------------------------------------------------------------ setup
+
+async function loadSetup() {
+  try { setup = await get('/api/setup'); }
+  catch (e) { $('status').innerHTML = `<span class="err">${esc(e.message)}</span>`; return; }
+  const bt = $('bots').querySelector('tbody');
+  bt.innerHTML = setup.bots.map(b => `<tr><td>${esc(b.name)}</td><td class="dim">${esc(b.folder)}</td></tr>`).join('')
+    || '<tr><td class="dim">No bots found. Put one in bots/.</td></tr>';
+  const pt = $('params').querySelector('tbody');
+  pt.innerHTML = setup.params.map(p => {
+    if (p.error) return `<tr><td>${esc(p.name)}</td><td class="err" colspan="2">${esc(p.error)}</td></tr>`;
+    const w = p.warning ? ` <span class="warn">${esc(p.warning)}</span>` : '';
+    return `<tr><td>${esc(p.name)}</td><td class="num">${p.stones} stones</td>` +
+           `<td class="num">${p.weight} weight${w}</td></tr>`;
+  }).join('') || '<tr><td>No parameter files in params/.</td></tr>';
+  const known = new Set(setup.bots.map(b => b.key));
+  pairs = pairs.map(p => ({...p, bots: p.bots.filter(n => known.has(n))})).filter(p => p.bots.length >= 2);
+  if (!pairs.length) addPair();
+  else drawPairs();
+}
+
+// --------------------------------------------------------------- matches
+
+function defaultConfig() { return (setup.params.find(p => !p.error) || {}).file; }
+
+function paramOptions(sel) {
+  return setup.params.filter(p => !p.error).map(p =>
+    `<option value="${esc(p.file)}" ${p.file === sel ? 'selected' : ''}>` +
+    `${esc(p.name)} (${p.stones} stones, ${p.weight} weight)</option>`).join('');
+}
+
+function botOptions(sel) {
+  return setup.bots.map(b => `<option value="${esc(b.key)}" ${b.key === sel ? 'selected' : ''}>` +
+                             `${esc(b.name)}</option>`).join('');
+}
+
+function addPair(bots, config) {
+  const names = setup.bots.map(x => x.key);
+  if (names.length < 2) { drawPairs(); return; }
+  pairs.push({bots: bots || [names[0], names[1]], config: config ?? defaultConfig()});
+  drawPairs();
+}
+
+function drawPairs() {
+  $('pairings').innerHTML = pairs.map((p, i) => `
+    <div class="pairing">
+      ${p.bots.map((b, j) => `
+        ${j ? '<span class="mid">vs</span>' : ''}
+        <span class="seat"><span class="dot" style="background:${UI[j % UI.length]}"></span>
+          <select data-i="${i}" data-j="${j}">${botOptions(b)}</select>
+          ${p.bots.length > 2 ? `<button class="mini" data-drop="${i}" data-j="${j}" title="remove this bot">−</button>` : ''}
+        </span>`).join('')}
+      ${p.bots.length < setup.max_players ? `<button class="mini" data-more="${i}" title="add a bot: makes this a melee">+ bot</button>` : ''}
+      <span class="kind">${p.bots.length === 2 ? 'pairing · 2 games' : `melee · ${p.bots.length} games`}</span>
+      <span class="grow"></span>
+      <select data-i="${i}" data-k="config">${paramOptions(p.config)}</select>
+      <button data-del="${i}" title="remove this match">✕</button>
+    </div>`).join('') || '<p class="hint">No matches yet. You need at least two bots.</p>';
+  $('pairings').querySelectorAll('select[data-j]').forEach(s => {
+    s.onchange = e => { pairs[+e.target.dataset.i].bots[+e.target.dataset.j] = e.target.value; };
+  });
+  $('pairings').querySelectorAll('select[data-k]').forEach(s => {
+    s.onchange = e => { pairs[+e.target.dataset.i].config = e.target.value; };
+  });
+  $('pairings').querySelectorAll('[data-del]').forEach(b => {
+    b.onclick = e => { pairs.splice(+e.target.dataset.del, 1); drawPairs(); };
+  });
+  $('pairings').querySelectorAll('[data-drop]').forEach(b => {
+    b.onclick = e => { pairs[+e.target.dataset.drop].bots.splice(+e.target.dataset.j, 1); drawPairs(); };
+  });
+  $('pairings').querySelectorAll('[data-more]').forEach(b => {
+    b.onclick = e => {
+      const p = pairs[+e.target.dataset.more];
+      const unused = setup.bots.map(x => x.key).find(n => !p.bots.includes(n));
+      p.bots.push(unused || setup.bots[0].key);
+      drawPairs();
+    };
+  });
+}
+
+$('addpair').onclick = () => addPair();
+$('clearpairs').onclick = () => { pairs = []; drawPairs(); };
+$('everypair').onclick = () => {
+  const names = setup.bots.map(b => b.key);
+  pairs = [];
+  for (let i = 0; i < names.length; i++)
+    for (let j = i + 1; j < names.length; j++) pairs.push({bots: [names[i], names[j]], config: defaultConfig()});
+  drawPairs();
+};
+$('melee').onclick = () => {
+  const names = setup.bots.map(b => b.key).slice(0, setup.max_players);
+  if (names.length < 2) return;
+  pairs = [{bots: names, config: defaultConfig()}];
+  drawPairs();
+};
+$('rescan').onclick = () => loadSetup();
+
+$('addparam').onclick = async () => {
+  try {
+    await post('/api/params', {name: $('pname').value, stones: +$('ps').value, weight: +$('pw').value});
+    $('pname').value = '';
+    await loadSetup();
+  } catch (e) { alert(e.message); }
+};
+
+// ---------------------------------------------------------------- running
+
+$('start').onclick = async () => {
+  const dup = pairs.find(p => new Set(p.bots).size !== p.bots.length);
+  if (dup) { alert('A bot may appear only once in a match.'); return; }
+  try {
+    await post('/api/start', {pairings: pairs, pace: +$('pace').value, clock: +$('clock').value});
+    $('liveframe').src = '/live';
+  } catch (e) { alert(e.message); }
+};
+$('stop').onclick = () => post('/api/stop').catch(() => {});
+$('clearres').onclick = async () => {
+  if (!confirm('Clear every saved result? A backup file is kept.')) return;
+  try { await post('/api/clear'); } catch (e) { alert(e.message); }
+};
+$('pace').onchange = () => post('/api/pace', {pace: +$('pace').value}).catch(() => {});
+
+// ---------------------------------------------------------------- results
+
+/** One game's scores in seat order, each with its seat colour; the game's winner in gold. */
+function gameCell(g) {
+  if (!g || !g.scores) return '<span class="dim">–</span>';
+  const best = Math.max(...g.scores);
+  const lone = g.scores.filter(s => s === best).length === 1;
+  return '<div class="g">' + g.seats.map((n, s) =>
+    `<span class="sw" style="background:${UI[s % UI.length]}"></span>` +
+    `<span class="${lone && g.scores[s] === best ? 'w' : ''}" title="${esc(n)}">${fmt(g.scores[s])}</span>`
+  ).join(' · ') + '</div>';
+}
+
+function drawResults(st) {
+  const rows = st.pairings || [];
+  const body = $('results').querySelector('tbody');
+  body.innerHTML = ['<tr><th>Match</th><th>Parameters</th><th>Games (seat order: red first)</th>' +
+                    '<th class="num">Total</th><th>Winner</th><th></th></tr>']
+    .concat(rows.map((p, i) => {
+      const who = p.bots.map(esc).join(' <span class="dim">vs</span> ');
+      const cfg = p.config ? p.config.replace(/^params\//, '').replace(/\.txt$/, '')
+                           : (p.params ? `${p.params.stones} stones, ${p.params.weight} weight` : '');
+      if (p.error) return `<tr><td>${who}</td><td>${esc(cfg)}</td><td colspan="4" class="err">${esc(p.error)}</td></tr>`;
+      if (!p.totals) {
+        const now = st.current === i ? '<span class="pill">playing…</span>' : '<span class="pill">queued</span>';
+        return `<tr><td>${who}</td><td>${esc(cfg)}</td><td colspan="4">${now}</td></tr>`;
+      }
+      const g = p.games || [];
+      const skipped = g.reduce((a, x) => a + (x.skipped || []).reduce((b, c) => b + c, 0), 0);
+      const forfeit = g.some(x => (x.errors || []).some(Boolean));
+      const totals = p.bots.map(n => `<div>${esc(n)} <b>${fmt(p.totals[n])}</b></div>`).join('');
+      const sorted = p.bots.map(n => p.totals[n]).sort((a, b) => b - a);
+      return `<tr><td>${who}</td><td>${esc(cfg)}</td>` +
+             `<td>${g.map(gameCell).join('')}</td>` +
+             `<td class="num">${totals}</td>` +
+             `<td class="win">${esc(p.winner || 'tie')}` +
+             `${p.winner ? ` <span class="dim">+${fmt(sorted[0] - sorted[1])}</span>` : ''}` +
+             `${skipped ? ` <span class="pill bad">${skipped} skipped</span>` : ''}` +
+             `${forfeit ? ' <span class="pill bad">forfeit</span>' : ''}</td>` +
+             `<td>${p.replay ? `<a href="${esc(p.replay)}" target="_blank">replay</a>`
+                      : p.replay_missing ? '<span class="dim" title="results/ was cleared">replay deleted</span>' : ''}` +
+             `${p.log && p.replay ? ` · <a href="${esc(p.log)}" target="_blank">log</a>` : ''}</td></tr>`;
+    })).join('');
+  if (!rows.length) body.innerHTML = '<tr><td>Nothing yet.</td></tr>';
+
+  // The standings: territory summed over every finished match, and match wins.
+  const pts = {}, played = {}, wins = {};
+  rows.forEach(p => {
+    if (!p.totals) return;
+    p.bots.forEach(n => { pts[n] = (pts[n] || 0) + (p.totals[n] || 0); played[n] = (played[n] || 0) + 1; });
+    if (p.winner) wins[p.winner] = (wins[p.winner] || 0) + 1;
+  });
+  const names = Object.keys(pts).sort((x, y) => pts[y] - pts[x]);
+  $('table').innerHTML = names.length
+    ? '<table><tbody><tr><th>Standings</th><th class="num">matches</th><th class="num">wins</th>' +
+      '<th class="num">territory</th></tr>' +
+      names.map(n => `<tr><td>${esc(n)}</td><td class="num">${played[n]}</td><td class="num">${wins[n] || 0}</td>` +
+                     `<td class="num">${fmt(pts[n])}</td></tr>`).join('') + '</tbody></table>'
+    : '';
+}
+
+async function poll() {
+  try {
+    const st = await get('/api/state');
+    const running = st.status === 'running';
+    $('status').textContent = st.message || '';
+    $('status').classList.toggle('run', running);
+    $('start').disabled = running;
+    $('stop').disabled = !running;
+    $('livecard').style.display = running ? '' : 'none';
+    drawResults(st);
+  } catch (e) { /* the server may be busy */ }
+}
+
+loadSetup().then(poll);
+setInterval(poll, 700);
+</script>
+</body>
+</html>

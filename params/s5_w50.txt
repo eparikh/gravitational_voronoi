@@ -1,0 +1,3 @@
+# stones per player, total weight per player
+5
+50
