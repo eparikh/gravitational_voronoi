@@ -64,7 +64,7 @@ are ignored by git, so players' code never gets committed by accident.
 ## The rules the referee enforces
 
 **Placing stones.** Each player has the same number of stones and the same total weight, from
-the parameter file. Player 1 (red) places a stone, then player 2 (blue), and so on, until every
+the parameter file. Player 1 places a stone, then player 2, and so on, until every
 player has had one turn per stone, so the last stone is placed by the last player. A stone is
 legal when:
 
@@ -96,6 +96,8 @@ by point against exact fractions.
 bot's score is its territory over both games added together, as the spec says. A melee does the
 same with more bots: one game per bot, the seating rotating so every bot sits in every seat
 exactly once (including the last seat, which places the last stone). The highest total wins.
+Each bot keeps one colour for the whole match, whichever seat it is in: the first bot named
+is red, the second blue, and so on, so you can follow a bot from game to game.
 
 **Clocks and failure.** Each bot has 120 seconds of thinking time for a whole game (set on the
 dashboard or with `--clock`), counted only while the referee waits for its answer. The

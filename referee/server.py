@@ -102,7 +102,7 @@ class Tournament:
         out = {'match_no': self.match_no, 'replay': m.get('replay'), 'run_size': self.run_size,
                'status': m.get('status', ''), 'names': m['names'], 'params': m.get('params'),
                'time_budget': m.get('time_budget'), 'pace': self.pace,
-               'game': cur.get('game'), 'seats': cur.get('seats'),
+               'game': cur.get('game'), 'seats': cur.get('seats'), 'colors': cur.get('colors'),
                'games': [{k: gs.get(k) for k in ('game', 'seats', 'status', 'scores', 'errors')}
                          for gs in m.get('games', [])]}
         if g is not None:

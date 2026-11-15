@@ -170,6 +170,10 @@ class Matches(unittest.TestCase):
         st = play_match(bots, make_config(2, 4), clock=20, out_dir=out, game_factory=small)
         seats = [g['seats'] for g in st['games']]
         self.assertEqual(seats, [['a', 'b', 'c'], ['b', 'c', 'a'], ['c', 'a', 'b']])
+        # each bot keeps its colour whichever seat it is in: a red, b blue, c green
+        for g in st['games']:
+            self.assertEqual(dict(zip(g['seats'], g['colors'])),
+                             {'a': 'red', 'b': 'blue', 'c': 'green'})
         totals = {n: 0 for n in 'abc'}
         for g in st['games']:
             for n, s in zip(g['seats'], g['scores']):

@@ -278,8 +278,9 @@ class BotSession:
 
 
 def play_game(bots, config, clock=120.0, game=1, on_move=None, delay=0, stop=None, live=None,
-              log=None, game_factory=Game):
+              log=None, game_factory=Game, colors=None):
     """Play one game. bots[i] sits in seat i; seat 0 moves first, the last seat moves last.
+    colors[i] is the colour of seat i (by default red, blue, ... in seat order).
 
     Returns a dict with the scores, every turn (for the replay), the referee's notes, the
     errors and the clocks. live (optional dict) is kept up to date for the dashboard, and
@@ -287,6 +288,8 @@ def play_game(bots, config, clock=120.0, game=1, on_move=None, delay=0, stop=Non
     """
     k = len(bots)
     g = game_factory(config, players=k)
+    if colors:
+        g.colors = list(colors)
     clocks = [float(clock)] * k
     if live is not None:
         live['clocks'], live['since'] = clocks, [None] * k
@@ -295,7 +298,7 @@ def play_game(bots, config, clock=120.0, game=1, on_move=None, delay=0, stop=Non
     notes = []
     sessions = [BotSession(b) for b in bots]
     pool = ThreadPoolExecutor(max_workers=k)
-    who = [f"{COLORS[p]} ({bots[p]['name']})" for p in range(k)]
+    who = [f"{g.colors[p]} ({bots[p]['name']})" for p in range(k)]
 
     def note(text):
         if len(notes) < NOTE_LIMIT:
@@ -309,7 +312,7 @@ def play_game(bots, config, clock=120.0, game=1, on_move=None, delay=0, stop=Non
             s = sessions[player]
             s.start()
             reply, _ = s.ask({'type': 'start', 'protocol_version': PROTOCOL_VERSION,
-                              'you': player + 1, 'players': k, 'color': COLORS[player],
+                              'you': player + 1, 'players': k, 'color': g.colors[player],
                               'grid': g.grid, 'min_dist': g.min_dist,
                               'stones': config.stones, 'weight': config.weight,
                               'clock': clock}, STARTUP_LIMIT)
@@ -408,7 +411,8 @@ def play_match(bots, config, clock=120.0, out_dir=None, on_progress=None, delay=
     """One match between two or more bots: as many games as there are bots.
 
     The seating rotates so that every bot sits in every seat exactly once: in game i, bot i
-    moves first. With two bots that is the spec's "your score as first player plus your score
+    moves first. Each bot keeps one colour for the whole match (the first bot named is red,
+    the second blue, ...), whichever seat it is in. With two bots that is the spec's "your score as first player plus your score
     as second player"; with more (a melee) it is the same idea. A bot's match score is its
     territory summed over all the games, and the highest total wins.
 
@@ -439,11 +443,13 @@ def play_match(bots, config, clock=120.0, out_dir=None, on_progress=None, delay=
     for game in range(1, k + 1):
         order = [(game - 1 + s) % k for s in range(k)]      # order[seat] = index into bots
         seated = [bots[i] for i in order]
+        colors = [COLORS[i] for i in order]                 # each bot keeps its own colour
         gstate = {'game': game, 'seats': [b['name'] for b in seated], 'order': order,
+                  'colors': colors,
                   'status': 'starting the bots', 'scores': [0] * k}
         state['games'].append(gstate)
         state['status'] = f'Game {game} of {k} · starting the bots'
-        log(f"game {game}: seats " + ', '.join(f'{COLORS[s]}={n}' for s, n in enumerate(gstate['seats'])))
+        log(f"game {game}: seats " + ', '.join(f'{colors[s]}={n}' for s, n in enumerate(gstate['seats'])))
         if on_progress:
             on_progress(state)
         if live is not None:
@@ -460,7 +466,7 @@ def play_match(bots, config, clock=120.0, out_dir=None, on_progress=None, delay=
                 on_progress(state, g)
 
         result = play_game(seated, cfg, clock, game, on_move=on_move, delay=delay, stop=stop,
-                           live=live, log=log, game_factory=game_factory)
+                           live=live, log=log, game_factory=game_factory, colors=colors)
         gstate.update(result, status='finished' if result['ended'] == 'finished' else 'stopped')
         state['grid'], state['min_dist'] = result['grid'], result['min_dist']
         for seat, i in enumerate(order):
@@ -480,7 +486,8 @@ def play_match(bots, config, clock=120.0, out_dir=None, on_progress=None, delay=
     state['status'] = 'Finished' if complete else 'Stopped'
     state['summary'] = {
         'type': 'match_over', 'totals': dict(zip(names, totals)), 'winner': winner,
-        'games': [{'game': gs['game'], 'seats': gs['seats'], 'scores': gs.get('scores'),
+        'games': [{'game': gs['game'], 'seats': gs['seats'], 'colors': gs.get('colors'),
+                   'scores': gs.get('scores'),
                    'skipped': gs.get('skipped'),
                    'errors': gs.get('errors') if any(gs.get('errors') or []) else None}
                   for gs in state['games']]}

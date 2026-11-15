@@ -17,7 +17,8 @@ from .runner import ROOT, build, load_bots, play_match
 
 def describe(game):
     s = game.get('scores') or []
-    parts = [f'{n} ({COLORS[i]}) {s[i] if i < len(s) else "?"}' for i, n in enumerate(game['seats'])]
+    colors = game.get('colors') or COLORS
+    parts = [f'{n} ({colors[i]}) {s[i] if i < len(s) else "?"}' for i, n in enumerate(game['seats'])]
     extra = []
     for i, n in enumerate(game['seats']):
         if (game.get('skipped') or [0] * 99)[i]:

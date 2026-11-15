@@ -180,7 +180,11 @@ let drawnStones = [];
 
 const esc = t => { const d = document.createElement('div'); d.textContent = t ?? ''; return d.innerHTML; };
 const fmt = n => (n ?? 0).toLocaleString('en-US');
-const colorOf = seat => (state && state.colors ? state.colors[seat] : COLORS[seat]) || COLORS[seat % COLORS.length];
+// The colour of each seat in the game on screen. A bot keeps one colour for the whole match,
+// so this changes from game to game as the seats rotate. Older replays without it fall back
+// to colouring by seat.
+let seatColors = null;
+const colorOf = seat => (seatColors && seatColors[seat]) || COLORS[seat % COLORS.length];
 
 // ---------------------------------------------------------------- territory
 
@@ -219,7 +223,7 @@ function territory(grid, stones, k) {
 
 /** Draw the board: the territory in light colours, then the stones, darker, on top. */
 function drawBoard(grid, stones, k, minDist, avgWeight, lastStone) {
-  const key = JSON.stringify([grid, stones, $('rings').checked, lastStone]);
+  const key = JSON.stringify([grid, stones, $('rings').checked, lastStone, seatColors]);
   if (key === lastKey) return;
   lastKey = key;
   const cv = $('board');
@@ -363,6 +367,7 @@ function render() {
   [...tabs.children].forEach((b, i) => b.classList.toggle('on', i === gameIx));
   if (!game) return;
 
+  seatColors = game.colors || null;
   const moves = game.moves || [];
   step = Math.max(0, Math.min(step, moves.length));
   const at = moves[step - 1];
@@ -469,6 +474,7 @@ function renderLive(s) {
   const P = s.params || {};
   const k = (s.seats || []).length;
   state = {colors: null};
+  seatColors = s.colors || null;
   $('meta').textContent = `${s.names.length} players · ${P.stones} stones and ${P.weight} weight each`;
   $('games').innerHTML = '';
   const last = n.stones[n.stones.length - 1];
