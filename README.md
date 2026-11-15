@@ -96,6 +96,9 @@ by point against exact fractions.
 bot's score is its territory over both games added together, as the spec says. A melee does the
 same with more bots: one game per bot, the seating rotating so every bot sits in every seat
 exactly once (including the last seat, which places the last stone). The highest total wins.
+A match can instead be set to **one game** (on its dashboard row, or `--one-game` on the
+command line): the bots play once, in the order listed, so the first bot moves first, and the
+score is that game's territory. Use it for quick tests; it is not the spec's scoring.
 Each bot keeps one colour for the whole match, whichever seat it is in: the first bot named
 is red, the second blue, and so on, so you can follow a bot from game to game.
 
@@ -206,6 +209,7 @@ stone is refused and the turn skipped.
 ```sh
 python3 start.py match "Greedy (Python)" "Spread (Python)"           # one pairing, opens the replay
 python3 start.py match "A" "B" "C" --config params/s20_w1000.txt     # a three-bot melee
+python3 start.py match "A" "B" --one-game                            # one game, A moves first
 python3 start.py tournament                                          # every pair, no browser
 python3 start.py tournament --melee                                  # one melee of every bot
 python3 start.py params --stones 10 --weight 100 --out params/my_game.txt

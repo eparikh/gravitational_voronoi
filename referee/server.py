@@ -140,7 +140,7 @@ class Tournament:
                     raise ValueError(f'Unknown or invalid parameter file: {cfg}')
             else:
                 cfg = make_config(p.get('stones'), p.get('weight'))
-            plan.append((names, cfg))
+            plan.append((names, cfg, bool(p.get('one_game'))))
         if not plan:
             raise ValueError('Add at least one match.')
         self.set_pace(req.get('pace', 300))
@@ -155,8 +155,9 @@ class Tournament:
                 {'bots': list(names),
                  'config': cfg if isinstance(cfg, str) else None,
                  'params': cfg.as_dict() if not isinstance(cfg, str) else None,
+                 'one_game': one,
                  'dir': f'{i + 1:02d}'}
-                for i, (names, cfg) in enumerate(plan)]
+                for i, (names, cfg, one) in enumerate(plan)]
             self.state = {'status': 'running',
                           'message': 'Preparing bots (compiling C++ if needed)...',
                           'time_budget': budget, 'output': str(out.relative_to(ROOT)),
@@ -176,10 +177,10 @@ class Tournament:
 
     def run(self, roster, plan, first, budget, out):
         out.mkdir(parents=True, exist_ok=True)
-        for name, err in build_all([roster[n] for n in sorted({n for names, _ in plan for n in names})]).items():
+        for name, err in build_all([roster[n] for n in sorted({n for names, _, _ in plan for n in names})]).items():
             if err:
                 print(f'! {name}: {err}', flush=True)
-        for i, (names, cfg) in enumerate(plan):
+        for i, (names, cfg, one) in enumerate(plan):
             if self.stop_flag.is_set():
                 break
             title = ' vs '.join(names)
@@ -201,7 +202,7 @@ class Tournament:
             try:
                 st = play_match([roster[n] for n in names], cfg, budget, out / entry['dir'],
                                 on_progress=progress, delay=lambda: self.pace,
-                                stop=self.stop_flag, live=self.clock, echo=True)
+                                stop=self.stop_flag, live=self.clock, echo=True, one_game=one)
                 result = pairing_result(st)
                 result['replay'] = '/' + (out / entry['dir'] / 'replay.html').relative_to(ROOT).as_posix()
                 if st['status'] == 'Finished' and not self.stop_flag.is_set():
