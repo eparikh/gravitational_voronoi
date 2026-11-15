@@ -331,6 +331,15 @@ function rebuild(game, upto) {
   return stones;
 }
 
+/** The tab label for a finished game: its winner and the share of the board they took. */
+function gameWinner(gs, points) {
+  const sc = gs.scores || [];
+  if (gs.status !== 'finished' || !sc.length) return 'not finished';
+  const best = Math.max(...sc);
+  if (sc.filter(v => v === best).length > 1) return `tie at ${(100 * best / points).toFixed(1)}%`;
+  return `${gs.seats[sc.indexOf(best)]} ${(100 * best / points).toFixed(1)}%`;
+}
+
 function render() {
   if (!state) return;
   const games = state.games || [];
@@ -346,7 +355,7 @@ function render() {
     tabs.innerHTML = '';
     games.forEach((gs, i) => {
       const b = document.createElement('button');
-      b.textContent = `Game ${gs.game}` + (gs.seats ? ` · ${gs.seats[0]} first` : '');
+      b.textContent = `Game ${gs.game} · ${gameWinner(gs, (state.grid || 1000) ** 2)}`;
       b.onclick = () => { gameIx = i; step = (games[i].moves || []).length; stopPlay(); render(); };
       tabs.appendChild(b);
     });
