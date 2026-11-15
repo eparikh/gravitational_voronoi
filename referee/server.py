@@ -37,6 +37,8 @@ class Tournament:
         self.state = {'status': 'idle', 'message': 'Choose bots and matches, then start.',
                       'pairings': list(self.done), 'current': None, 'run_from': len(self.done)}
         self.match = None            # state dict of the match being played
+        self.match_no = 0            # counts matches, so the live page can tell them apart
+        self.run_size = 0            # how many matches the running tournament has
         self.game = None             # the engine.Game being played (for /state)
         self.clock = {}              # live clocks of that game, ticking while a bot thinks
         self.pace = 0.3              # seconds to linger per move, so people can watch
@@ -97,7 +99,8 @@ class Tournament:
         if not m:
             return {'status': 'No match yet. Start a tournament.', 'names': []}
         cur = m['games'][-1] if m.get('games') else {}
-        out = {'status': m.get('status', ''), 'names': m['names'], 'params': m.get('params'),
+        out = {'match_no': self.match_no, 'replay': m.get('replay'), 'run_size': self.run_size,
+               'status': m.get('status', ''), 'names': m['names'], 'params': m.get('params'),
                'time_budget': m.get('time_budget'), 'pace': self.pace,
                'game': cur.get('game'), 'seats': cur.get('seats'),
                'games': [{k: gs.get(k) for k in ('game', 'seats', 'status', 'scores', 'errors')}
@@ -160,6 +163,7 @@ class Tournament:
                           'pairings': pairings, 'run_from': first, 'current': None}
             self.match = None
             self.game = None
+        self.run_size = len(plan)
         self.thread = threading.Thread(target=self.run, args=(roster, plan, first, budget, out),
                                        daemon=True)
         self.thread.start()
@@ -183,6 +187,7 @@ class Tournament:
                 entry = self.state['pairings'][first + i]
                 self.state['current'] = first + i
                 self.state['message'] = f'Match {i + 1} of {len(plan)}: {title}'
+                self.match_no += 1
                 self.match = {'status': f'Starting {title}...', 'names': names,
                               'games': [], 'time_budget': budget}
                 self.game = None
@@ -197,9 +202,11 @@ class Tournament:
                 st = play_match([roster[n] for n in names], cfg, budget, out / entry['dir'],
                                 on_progress=progress, delay=lambda: self.pace,
                                 stop=self.stop_flag, live=self.clock, echo=True)
-                self.match = st
                 result = pairing_result(st)
                 result['replay'] = '/' + (out / entry['dir'] / 'replay.html').relative_to(ROOT).as_posix()
+                if st['status'] == 'Finished' and not self.stop_flag.is_set():
+                    st['replay'] = result['replay']      # tells the live page where to go
+                self.match = st
                 result['log'] = '/' + (out / entry['dir'] / 'log.txt').relative_to(ROOT).as_posix()
                 if self.stop_flag.is_set() or st['status'] != 'Finished':
                     result = {'error': 'stopped'}

@@ -127,6 +127,11 @@ the board, weight left and clock, and whose turn it is. Tick **show the no-go zo
 any point. The **watching pace** lingers a few hundred milliseconds per move so a game is
 watchable; it never counts against the bots' clocks and can be changed while a game runs.
 
+When the tournament is a single match and you watched it finish, the page jumps to its
+replay, opened on the game that just ended. With several matches it stays on the dashboard,
+and the replays are linked from the results table. Click the **Gravitational Voronoi** title at the top left of any board or replay
+page to get back to the dashboard.
+
 Finished matches go into the results table with each game's scores in seat order, the totals,
 the winner and margin, and links to the **replay** and the **log**. Replays are self-contained
 HTML files under `results/`: step through one with the arrow keys or press space to play.

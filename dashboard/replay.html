@@ -19,6 +19,9 @@
     padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
   }
   header h1 { font-size: 17px; margin: 0; letter-spacing: .3px; }
+  header h1 a { color: inherit; text-decoration: none; }
+  header h1 a:hover { color: var(--gold); }
+  header h1 a::before { content: "← "; color: var(--dim); font-weight: 400; }
   header .meta { color: var(--dim); font-size: 13px; }
   .wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; padding: 18px 20px; }
   @media (max-width: 960px) { .wrap { grid-template-columns: 1fr; } }
@@ -96,7 +99,7 @@
 </head>
 <body>
 <header>
-  <h1>Gravitational Voronoi</h1>
+  <h1><a id="home" href="/" target="_top" title="Back to the dashboard">Gravitational Voronoi</a></h1>
   <span class="meta" id="meta"></span>
   <span class="meta" id="status"></span>
 </header>
@@ -478,18 +481,41 @@ function renderLive(s) {
   drawNotes(notes);
 }
 
+// The title goes home: the dashboard serving this page, or, for a replay file opened straight
+// from disk, the dashboard at its usual address (if it is running).
+if (location.protocol === 'file:') $('home').href = 'http://127.0.0.1:8093/';
+
 if (DATA) {
   state = DATA;
-  gameIx = 0;
-  step = ((state.games[0] || {}).moves || []).length;
+  // ?game=N opens that game's tab; the live page uses it to land on the game that just ended.
+  const want = parseInt(new URLSearchParams(location.search).get('game'), 10);
+  gameIx = want >= 1 && want <= state.games.length ? want - 1 : 0;
+  step = ((state.games[gameIx] || {}).moves || []).length;
   render();
 } else {
   $('controls').style.display = 'none';
   $('movescard').style.display = 'none';
+  // When a match we watched being played finishes, go to its replay, open on its last game.
+  // Only for a tournament of a single match: with several, the page stays put so you can
+  // watch the rest. A match that was already over when this page loaded does not count, so
+  // opening the dashboard later never bounces you away.
+  const watched = new Set();
+  let leaving = false;
   const poll = async () => {
+    if (leaving) return;
     try {
       const r = await fetch('/state');
-      renderLive(await r.json());
+      const s = await r.json();
+      if (s.match_no && !s.replay) watched.add(s.match_no);
+      if (s.replay && s.run_size === 1 && watched.has(s.match_no)) {
+        leaving = true;
+        $('status').textContent = 'Match over. Opening the replay...';
+        setTimeout(() => {
+          window.top.location.href = `${s.replay}?game=${(s.games || []).length || 1}`;
+        }, 1500);
+        return;
+      }
+      renderLive(s);
     } catch (e) { /* the server may be busy between matches */ }
   };
   $('rings').onchange = () => { lastKey = ''; poll(); };
