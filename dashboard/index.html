@@ -88,6 +88,43 @@
   .g .w { color: var(--gold); font-weight: 600; }
   .sw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; }
   code { color: #c9cfe6; }
+
+  /* Points: tick matches in the results table, then score them in a near-fullscreen window. */
+  td.pick, th.pick { width: 28px; padding-right: 0; }
+  input[type=checkbox] { accent-color: var(--gold); width: 15px; height: 15px; cursor: pointer; }
+  .scorebar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px;
+              padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #161922; }
+  .scorebar .count { color: var(--dim); font-size: 13px; }
+  .modal { position: fixed; inset: 0; background: rgba(5, 6, 10, .72); display: none; z-index: 50;
+           padding: 24px; }
+  .modal.open { display: flex; }
+  .modal .box { flex: 1; display: flex; flex-direction: column; background: var(--panel);
+                border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .modal .top { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; padding: 14px 18px;
+                border-bottom: 1px solid var(--line); }
+  .modal .top h3 { margin: 0; font-size: 17px; }
+  .modal .top .dim { font-size: 13px; }
+  .modal .cols { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
+                 min-height: 0; }
+  @media (max-width: 900px) {
+    .modal { padding: 10px; }
+    .modal .cols { grid-template-columns: 1fr; overflow: auto; }
+    .modal .col { overflow: visible; }
+    .modal .col + .col { order: -1; border-left: none; border-bottom: 1px solid var(--line); }
+  }
+  .modal .col { overflow: auto; padding: 16px 18px; }
+  .modal .col + .col { border-left: 1px solid var(--line); background: #171a23; }
+  .modal h4 { margin: 0 0 10px; font-size: 12px; letter-spacing: .09em; text-transform: uppercase; color: var(--dim); }
+  .mcard { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+  .mcard .mh { padding: 8px 12px; background: #20242f; font-size: 13px; display: flex; gap: 10px;
+               flex-wrap: wrap; align-items: baseline; }
+  .mcard .mh .dim { font-size: 12px; }
+  .mcard table td, .mcard table th { padding: 6px 12px; }
+  .pt { color: var(--gold); font-weight: 700; }
+  .nopt { color: var(--dim); }
+  .rank td { font-size: 15px; padding: 9px 10px; }
+  .rank td.big { font-size: 22px; font-weight: 700; color: var(--gold); }
+  .rank tr.leader td { background: #2a2618; }
 </style>
 </head>
 <body>
@@ -169,6 +206,15 @@
     <h2>Results</h2>
     <div class="body">
       <table id="results"><tbody></tbody></table>
+      <div class="scorebar">
+        <b>Points</b>
+        <span class="count" id="pickcount">Tick the matches to count.</span>
+        <span style="flex:1"></span>
+        <label class="small">the winner and anyone within
+          <input type="number" id="margin" value="10000" min="0" step="1000" style="width:96px">
+          points of territory get a point</label>
+        <button class="primary" id="score" disabled>Count points</button>
+      </div>
       <div id="table" style="margin-top:18px"></div>
       <div class="row" style="margin-top:14px">
         <button class="danger" id="clearres">Clear results</button>
@@ -176,6 +222,23 @@
     </div>
   </div>
 </main>
+
+<!-- Points over the ticked matches -->
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="mtitle">
+  <div class="box">
+    <div class="top">
+      <h3 id="mtitle">Points</h3>
+      <span class="dim" id="msub"></span>
+      <span style="flex:1"></span>
+      <button id="mcopy">Copy as text</button>
+      <button id="mclose">Close</button>
+    </div>
+    <div class="cols">
+      <div class="col"><h4>Matches</h4><div id="mmatches"></div></div>
+      <div class="col"><h4>Standings</h4><div id="mstand"></div></div>
+    </div>
+  </div>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -344,27 +407,45 @@ function gameCell(g) {
   ).join(' · ') + '</div>';
 }
 
+// Ticked matches, by key, so a tick survives the table being redrawn.
+const picked = new Set();
+let lastDrawn = '';
+let resultRows = [];
+const keyOf = (p, i) => p.replay || p.log || `match-${i}`;
+const finished = p => !!p.totals && !p.error;
+
 function drawResults(st) {
   const rows = st.pairings || [];
+  // Redraw only when something changed, so a click on a tick box is never lost mid-redraw.
+  const sig = JSON.stringify([rows, st.current]);
+  if (sig === lastDrawn) return;
+  lastDrawn = sig;
+  resultRows = rows;
+  const keys = new Set(rows.map(keyOf));
+  [...picked].forEach(k => { if (!keys.has(k)) picked.delete(k); });
   const body = $('results').querySelector('tbody');
-  body.innerHTML = ['<tr><th>Match</th><th>Parameters</th><th>Games (in move order)</th>' +
+  body.innerHTML = ['<tr><th class="pick"><input type="checkbox" id="pickall" title="Tick every finished match"></th>' +
+                    '<th>Match</th><th>Parameters</th><th>Games (in move order)</th>' +
                     '<th class="num">Total</th><th>Winner</th><th></th></tr>']
     .concat(rows.map((p, i) => {
+      const tick = finished(p)
+        ? `<td class="pick"><input type="checkbox" data-pick="${esc(keyOf(p, i))}" ${picked.has(keyOf(p, i)) ? 'checked' : ''}></td>`
+        : '<td class="pick"></td>';
       const who = p.bots.map(esc).join(' <span class="dim">vs</span> ');
       const cfg = (p.config ? p.config.replace(/^params\//, '').replace(/\.txt$/, '')
                             : (p.params ? `${p.params.stones} stones, ${p.params.weight} weight` : '')) +
                   (p.one_game ? ' · 1 game' : '');
-      if (p.error) return `<tr><td>${who}</td><td>${esc(cfg)}</td><td colspan="4" class="err">${esc(p.error)}</td></tr>`;
+      if (p.error) return `<tr>${tick}<td>${who}</td><td>${esc(cfg)}</td><td colspan="4" class="err">${esc(p.error)}</td></tr>`;
       if (!p.totals) {
         const now = st.current === i ? '<span class="pill">playing…</span>' : '<span class="pill">queued</span>';
-        return `<tr><td>${who}</td><td>${esc(cfg)}</td><td colspan="4">${now}</td></tr>`;
+        return `<tr>${tick}<td>${who}</td><td>${esc(cfg)}</td><td colspan="4">${now}</td></tr>`;
       }
       const g = p.games || [];
       const skipped = g.reduce((a, x) => a + (x.skipped || []).reduce((b, c) => b + c, 0), 0);
       const forfeit = g.some(x => (x.errors || []).some(Boolean));
       const totals = p.bots.map(n => `<div>${esc(n)} <b>${fmt(p.totals[n])}</b></div>`).join('');
       const sorted = p.bots.map(n => p.totals[n]).sort((a, b) => b - a);
-      return `<tr><td>${who}</td><td>${esc(cfg)}</td>` +
+      return `<tr>${tick}<td>${who}</td><td>${esc(cfg)}</td>` +
              `<td>${g.map(gameCell).join('')}</td>` +
              `<td class="num">${totals}</td>` +
              `<td class="win">${esc(p.winner || 'tie')}` +
@@ -376,6 +457,16 @@ function drawResults(st) {
              `${p.log && p.replay ? ` · <a href="${esc(p.log)}" target="_blank">log</a>` : ''}</td></tr>`;
     })).join('');
   if (!rows.length) body.innerHTML = '<tr><td>Nothing yet.</td></tr>';
+  body.querySelectorAll('input[data-pick]').forEach(c => {
+    c.onchange = e => { e.target.checked ? picked.add(e.target.dataset.pick) : picked.delete(e.target.dataset.pick); pickCount(); };
+  });
+  const all = $('pickall');
+  if (all) all.onchange = e => {
+    rows.forEach((p, i) => { if (finished(p)) e.target.checked ? picked.add(keyOf(p, i)) : picked.delete(keyOf(p, i)); });
+    body.querySelectorAll('input[data-pick]').forEach(c => { c.checked = e.target.checked; });
+    pickCount();
+  };
+  pickCount();
 
   // The standings: territory summed over every finished match, and match wins.
   const pts = {}, played = {}, wins = {};
@@ -392,6 +483,115 @@ function drawResults(st) {
                      `<td class="num">${fmt(pts[n])}</td></tr>`).join('') + '</tbody></table>'
     : '';
 }
+
+// ------------------------------------------------------------------ points
+
+function pickCount() {
+  const done = resultRows.filter(finished).length;
+  const n = resultRows.filter((p, i) => finished(p) && picked.has(keyOf(p, i))).length;
+  $('pickcount').textContent = done
+    ? `${n} of ${done} finished match${done === 1 ? '' : 'es'} ticked.`
+    : 'No finished matches yet.';
+  $('score').disabled = n === 0;
+  const all = $('pickall');
+  if (all) { all.checked = n > 0 && n === done; all.indeterminate = n > 0 && n < done; }
+}
+
+/** The professor's rule: in each match the winner gets a point, and so does anyone whose
+ *  territory is within `margin` of the winner's. Territory is the match total (both games
+ *  added together, or the single game for a one-game match). */
+function countPoints(matches, margin) {
+  const table = {};
+  const cards = matches.map(p => {
+    const best = Math.max(...p.bots.map(n => p.totals[n]));
+    const rows = p.bots.map((n, ix) => {
+      const area = p.totals[n], behind = best - area, point = behind <= margin;
+      const t = table[n] = table[n] || {name: n, points: 0, matches: 0, area: 0, won: 0};
+      t.matches++; t.area += area;
+      if (point) t.points++;
+      if (behind === 0) t.won++;
+      return {name: n, ix, area, behind, point};
+    }).sort((a, b) => b.area - a.area);
+    return {p, best, rows};
+  });
+  // Most points first; territory over the counted matches breaks ties in the listing only.
+  const standings = Object.values(table).sort((a, b) => b.points - a.points || b.area - a.area);
+  let rank = 0;
+  standings.forEach((t, i) => { if (i === 0 || t.points !== standings[i - 1].points) rank = i + 1; t.rank = rank; });
+  return {cards, standings};
+}
+
+function matchLabel(p) {
+  const cfg = p.config ? p.config.replace(/^params\//, '').replace(/\.txt$/, '')
+                       : (p.params ? `${p.params.stones} stones, ${p.params.weight} weight` : '');
+  return cfg + (p.one_game ? ' · 1 game' : ` · ${(p.games || []).length} games`);
+}
+
+let lastScore = null;
+
+function openPoints() {
+  const margin = Math.max(0, +$('margin').value || 0);
+  const chosen = resultRows.map((p, i) => [p, i]).filter(([p, i]) => finished(p) && picked.has(keyOf(p, i)));
+  const {cards, standings} = countPoints(chosen.map(([p]) => p), margin);
+  lastScore = {margin, cards, standings, numbers: chosen.map(([, i]) => i + 1)};
+  $('mtitle').textContent = `Points over ${cards.length} match${cards.length === 1 ? '' : 'es'}`;
+  $('msub').textContent = `A point for the winner of each match and anyone within ${fmt(margin)} of the winner's territory.`;
+
+  $('mmatches').innerHTML = cards.map(({p, best, rows}, c) => {
+    const forfeit = (p.games || []).some(x => (x.errors || []).some(Boolean));
+    return `<div class="mcard">
+      <div class="mh"><b>Match ${lastScore.numbers[c]}</b><span>${p.bots.map(esc).join(' vs ')}</span>
+        <span class="dim">${esc(matchLabel(p))}</span>
+        ${forfeit ? '<span class="pill bad">forfeit</span>' : ''}</div>
+      <table><tbody>
+        <tr><th></th><th>Bot</th><th class="num">Territory</th><th class="num">Behind winner</th><th class="num">Point</th></tr>
+        ${rows.map(r => `<tr>
+          <td><span class="sw" style="background:${UI[r.ix % UI.length]}"></span></td>
+          <td>${esc(r.name)}</td>
+          <td class="num">${fmt(r.area)}</td>
+          <td class="num">${r.behind === 0 ? '<span class="pt">top</span>' : '−' + fmt(r.behind)}</td>
+          <td class="num">${r.point ? '<span class="pt">+1</span>' : '<span class="nopt">0</span>'}</td>
+        </tr>`).join('')}
+      </tbody></table></div>`;
+  }).join('');
+
+  $('mstand').innerHTML = '<table class="rank"><tbody>' +
+    '<tr><th>#</th><th>Bot</th><th class="num">Points</th><th class="num">Matches</th>' +
+    '<th class="num" title="Territory over the counted matches, for reference">Territory</th></tr>' +
+    standings.map(t => `<tr class="${t.rank === 1 ? 'leader' : ''}">
+      <td>${t.rank}</td><td>${esc(t.name)}</td><td class="num big">${t.points}</td>
+      <td class="num">${t.matches}</td><td class="num dim">${fmt(t.area)}</td></tr>`).join('') +
+    '</tbody></table>' +
+    `<p class="hint" style="margin-top:12px">Bots with equal points share a rank. Territory is shown for
+     reference and orders bots within a tie.</p>`;
+  $('modal').classList.add('open');
+  $('mclose').focus();
+}
+
+function pointsText() {
+  const s = lastScore;
+  const out = [`Gravitational Voronoi: points over ${s.cards.length} matches ` +
+               `(winner and anyone within ${s.margin} of the winner get a point)`, '', 'Standings'];
+  s.standings.forEach(t => out.push(`${String(t.rank).padStart(3)}. ${t.name}: ${t.points} point${t.points === 1 ? '' : 's'}` +
+                                    ` (${t.matches} match${t.matches === 1 ? '' : 'es'}, territory ${t.area})`));
+  out.push('', 'Matches');
+  s.cards.forEach(({p, rows}, c) => {
+    out.push(`Match ${s.numbers[c]}: ${p.bots.join(' vs ')} (${matchLabel(p)})`);
+    rows.forEach(r => out.push(`    ${r.point ? '+1' : ' 0'}  ${r.name}  ${r.area}` +
+                               (r.behind ? ` (${r.behind} behind)` : ' (top)')));
+  });
+  return out.join('\n');
+}
+
+$('score').onclick = openPoints;
+$('mclose').onclick = () => $('modal').classList.remove('open');
+$('modal').onclick = e => { if (e.target === $('modal')) $('modal').classList.remove('open'); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('modal').classList.remove('open'); });
+$('mcopy').onclick = async () => {
+  try { await navigator.clipboard.writeText(pointsText()); $('mcopy').textContent = 'Copied'; }
+  catch (e) { $('mcopy').textContent = 'Copy failed'; }
+  setTimeout(() => { $('mcopy').textContent = 'Copy as text'; }, 1500);
+};
 
 async function poll() {
   try {

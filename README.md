@@ -137,6 +137,15 @@ replay, opened on the game that just ended. With several matches it stays on the
 and the replays are linked from the results table. Click the **Gravitational Voronoi** title at the top left of any board or replay
 page to get back to the dashboard.
 
+**Counting points.** The course scores a tournament by points: the winner of each match gets a
+point, and so does anyone whose territory is within 10,000 of the winner's. Tick the matches to
+count in the results table (or tick the box in its header for all of them), set the margin if
+it differs, and press **Count points**. A window shows every ticked match with each bot's
+territory, how far behind the winner it was and whether it scored, and the standings ranked by
+points. Bots on equal points share a rank; their territory is shown to order them within the
+tie. **Copy as text** gives the same thing as plain text to paste anywhere. A match's territory
+is its total over all its games (or the single game, for a one-game match).
+
 Finished matches go into the results table with each game's scores in seat order, the totals,
 the winner and margin, and links to the **replay** and the **log**. Replays are self-contained
 HTML files under `results/`: step through one with the arrow keys or press space to play.
