@@ -52,6 +52,7 @@
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--dim); font-weight: 500; font-size: 12px; }
   td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  th.num { text-align: right; }          /* headings sit over their right-aligned numbers */
   tr:last-child td { border-bottom: none; }
 
   select, input[type=text], input[type=number] {
@@ -120,6 +121,11 @@
                flex-wrap: wrap; align-items: baseline; }
   .mcard .mh .dim { font-size: 12px; }
   .mcard table td, .mcard table th { padding: 6px 12px; }
+  /* The same column widths in every match card, so the cards line up with each other. */
+  .mcard table { table-layout: fixed; }
+  .mcard col.c-dot { width: 32px; }
+  .mcard col.c-num { width: 18%; }
+  .mcard col.c-pt { width: 70px; }
   .pt { color: var(--gold); font-weight: 700; }
   .nopt { color: var(--dim); }
   .rank td { font-size: 15px; padding: 9px 10px; }
@@ -543,7 +549,7 @@ function openPoints() {
       <div class="mh"><b>Match ${lastScore.numbers[c]}</b><span>${p.bots.map(esc).join(' vs ')}</span>
         <span class="dim">${esc(matchLabel(p))}</span>
         ${forfeit ? '<span class="pill bad">forfeit</span>' : ''}</div>
-      <table><tbody>
+      <table><colgroup><col class="c-dot"><col><col class="c-num"><col class="c-num"><col class="c-pt"></colgroup><tbody>
         <tr><th></th><th>Bot</th><th class="num">Territory</th><th class="num">Behind winner</th><th class="num">Point</th></tr>
         ${rows.map(r => `<tr>
           <td><span class="sw" style="background:${UI[r.ix % UI.length]}"></span></td>
